@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+
+# Requires Python 3.6+.
+
+import argparse
+import os
+import pathlib
+import shlex
+import shutil
+import sqlite3
+import subprocess
+import sys
+
+import bs4
+
+
+HERE = pathlib.Path(__file__).resolve().parent
+DOCSET = HERE / 'Zsh.docset'
+DOCSET_TARBALL = HERE / 'Zsh.tgz'
+CONTENTS = DOCSET / 'Contents'
+RESOURCES = CONTENTS / 'Resources'
+INFO_PLIST = CONTENTS / 'Info.plist'
+DOCUMENTS_DIR =  RESOURCES / 'Documents'
+INDEX = RESOURCES / 'docSet.dsidx'
+
+
+def run(cmd):
+    print('> ' + ' '.join(shlex.quote(str(arg)) for arg in cmd), file=sys.stderr)
+    subprocess.check_call(cmd)
+
+
+def download(version):
+    url = f'https://downloads.sourceforge.net/project/zsh/zsh-doc/{version}/zsh-{version}-doc.tar.xz'
+    file = HERE / f'zsh-{version}-doc.tar.xz'
+    run(['curl', '-A', 'curl', '-Lo', file, url])
+    run(['tar', 'xJf', file])
+    return HERE / f'zsh-{version}'
+
+
+INFO_PLIST_CONTENT = '''\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>zsh</string>
+	<key>CFBundleName</key>
+	<string>Zsh</string>
+	<key>DocSetPlatformFamily</key>
+	<string>zsh</string>
+	<key>isDashDocset</key>
+	<true/>
+        <key>dashIndexFilePath</key>
+        <string>index.html</string>
+        <key>DashDocSetFallbackURL</key>
+        <string>http://zsh.sourceforge.net/Doc/Release/</string>
+</dict>
+</plist>
+'''
+
+
+def generate_info_plist():
+    with open(INFO_PLIST, 'w') as fp:
+        fp.write(INFO_PLIST_CONTENT)
+
+
+def copy_documents(version):
+    DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
+    source_dir = HERE / f'zsh-{version}' / 'Doc'
+    for file in source_dir.glob('*.html'):
+        shutil.copy(file, DOCUMENTS_DIR)
+
+
+def generate_index():
+    entries = []
+    for file in DOCUMENTS_DIR.iterdir():
+        with open(file) as fp:
+            title = bs4.BeautifulSoup(fp, 'html.parser').title.text
+        if title.startswith('zsh: '):
+            title = title[5:]
+        entries.append((title, 'Guide', file.name))
+
+    # Indexes
+    for filename, index_class, type_ in [('Concept-Index.html', 'index-cp', 'Entry'),
+                                         ('Variables-Index.html', 'index-vr', 'Variable'),
+                                         ('Options-Index.html', 'index-pg', 'Option'),
+                                         ('Functions-Index.html', 'index-fn', 'Function'),
+                                         ('Editor-Functions-Index.html', 'index-tp', 'Function')]:
+        with open(DOCUMENTS_DIR / filename) as fp:
+            soup = bs4.BeautifulSoup(fp, 'html.parser')
+        table = soup.find('table', class_=index_class)
+        for tr in table.find_all('tr'):
+            try:
+                name = tr.a.text
+                path = tr.a['href']
+                entries.append((name, type_, path))
+            except Exception:
+                pass
+
+    # Style and tag index
+    with open(DOCUMENTS_DIR / 'Style-and-Tag-Index.html') as fp:
+        soup = bs4.BeautifulSoup(fp, 'html.parser')
+    table = soup.find('table', class_='index-ky')
+    for tr in table.find_all('tr'):
+        try:
+            name = tr.a.text
+            path = tr.a['href']
+            entries.append((name, ('Tag' if name.endswith(' tag') else 'Style'), path))
+        except Exception:
+            pass
+
+    conn = sqlite3.connect(os.fspath(INDEX))
+    cur = conn.cursor()
+
+    try:
+        cur.execute('DROP TABLE searchIndex;')
+    except Exception:
+        pass
+    cur.execute('CREATE TABLE searchIndex(id INTEGER PRIMARY KEY, name TEXT, type TEXT, path TEXT);')
+    cur.execute('CREATE UNIQUE INDEX anchor ON searchIndex (name, type, path);')
+    for name, type_, path in entries:
+        print(f'|{name}|{type_}|{path}')
+        cur.execute('INSERT OR IGNORE INTO searchIndex(name, type, path) VALUES (?,?,?)', (name, type_, path))
+    conn.commit()
+    conn.close()
+
+
+def add_icon():
+    run(['curl', '-o', DOCSET / 'icon.png', 'http://zsh.sourceforge.net/favicon.png'])
+
+
+def tarup():
+    run(['tar', '--exclude=.DS_Store', '-C', DOCSET.parent, '-cvzf', DOCSET_TARBALL.name, DOCSET.name])
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('zsh_version')
+    args = parser.parse_args()
+
+    version = args.zsh_version
+    download(version)
+    generate_info_plist()
+    copy_documents(version)
+    generate_index()
+    add_icon()
+    tarup()
+
+
+if __name__ == '__main__':
+    main()
