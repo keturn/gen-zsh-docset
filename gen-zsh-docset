@@ -34,7 +34,6 @@ def download(version):
     file = HERE / f'zsh-{version}-doc.tar.xz'
     run(['curl', '-A', 'curl', '-Lo', file, url])
     run(['tar', 'xJf', file])
-    return HERE / f'zsh-{version}'
 
 
 INFO_PLIST_CONTENT = '''\
