@@ -59,6 +59,8 @@ INFO_PLIST_CONTENT = '''\
 
 
 def generate_info_plist():
+    if not os.path.exists(os.path.dirname(INFO_PLIST)):
+        os.makedirs(os.path.dirname(INFO_PLIST))
     with open(INFO_PLIST, 'w') as fp:
         fp.write(INFO_PLIST_CONTENT)
 
