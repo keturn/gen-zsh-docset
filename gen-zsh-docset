@@ -20,7 +20,7 @@ DOCSET_TARBALL = HERE / 'Zsh.tgz'
 CONTENTS = DOCSET / 'Contents'
 RESOURCES = CONTENTS / 'Resources'
 INFO_PLIST = CONTENTS / 'Info.plist'
-DOCUMENTS_DIR =  RESOURCES / 'Documents'
+DOCUMENTS_DIR = RESOURCES / 'Documents'
 INDEX = RESOURCES / 'docSet.dsidx'
 
 
@@ -137,10 +137,16 @@ def tarup():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('zsh_version')
+    parser.add_argument(
+            '--no-download',
+            help='don\'t download docs and assume they are available in the current directory',
+            action='store_true',
+            )
     args = parser.parse_args()
 
     version = args.zsh_version
-    download(version)
+    if not args.no_download:
+        download(version)
     generate_info_plist()
     copy_documents(version)
     generate_index()
