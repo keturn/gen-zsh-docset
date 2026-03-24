@@ -5,6 +5,7 @@
 import argparse
 import os
 import pathlib
+import plistlib
 import shlex
 import shutil
 import sqlite3
@@ -36,33 +37,20 @@ def download(version):
     run(['tar', 'xJf', file])
 
 
-INFO_PLIST_CONTENT = '''\
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleIdentifier</key>
-	<string>zsh</string>
-	<key>CFBundleName</key>
-	<string>Zsh</string>
-	<key>DocSetPlatformFamily</key>
-	<string>zsh</string>
-	<key>isDashDocset</key>
-	<true/>
-        <key>dashIndexFilePath</key>
-        <string>index.html</string>
-        <key>DashDocSetFallbackURL</key>
-        <string>http://zsh.sourceforge.net/Doc/Release/</string>
-</dict>
-</plist>
-'''
-
+INFO_PLIST_DATA = dict(
+    CFBundleIdentifier="zsh",
+    CFBundleName="Zsh",
+    DocSetPlatformFamily="zsh",
+    isDashDocset=True,
+    dashIndexFilePath="index.html",
+    DashDocSetFallbackURL="https://zsh.sourceforge.net/Doc/Release/"
+)
 
 def generate_info_plist():
     if not os.path.exists(os.path.dirname(INFO_PLIST)):
         os.makedirs(os.path.dirname(INFO_PLIST))
-    with open(INFO_PLIST, 'w') as fp:
-        fp.write(INFO_PLIST_CONTENT)
+    with open(INFO_PLIST, 'wb') as plist_file:
+        plistlib.dump(INFO_PLIST_DATA, plist_file, sort_keys=False)
 
 
 def copy_documents(version):
