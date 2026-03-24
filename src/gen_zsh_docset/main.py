@@ -14,7 +14,7 @@ import sys
 import bs4
 
 
-HERE = pathlib.Path(__file__).resolve().parent
+HERE = pathlib.Path().cwd()
 DOCSET = HERE / 'Zsh.docset'
 DOCSET_TARBALL = HERE / 'Zsh.tgz'
 CONTENTS = DOCSET / 'Contents'

@@ -1,0 +1,20 @@
+[project]
+name = "gen-zsh-docset"
+version = "0.1.0"
+description = "Docset generator for the Zsh manual"
+authors = [
+    { name = "Kevin Turner", email = "83819+keturn@users.noreply.github.com" },
+    { name = "Zhiming Wang", email = "i@zhimingwang.org"},
+    { email = "60473183+solarizedalias@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+]
+
+[project.scripts]
+gen-zsh-docset = "gen_zsh_docset.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"
