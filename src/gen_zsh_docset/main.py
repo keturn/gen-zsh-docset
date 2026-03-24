@@ -4,18 +4,18 @@
 
 import argparse
 import os
-import pathlib
 import plistlib
 import shlex
 import shutil
 import sqlite3
 import subprocess
 import sys
+from pathlib import Path
 
 import bs4
+import httpx
 
-
-HERE = pathlib.Path().cwd()
+HERE = Path().cwd()
 DOCSET = HERE / 'Zsh.docset'
 DOCSET_TARBALL = HERE / 'Zsh.tgz'
 CONTENTS = DOCSET / 'Contents'
@@ -30,10 +30,16 @@ def run(cmd):
     subprocess.check_call(cmd)
 
 
+def _download_to_file(url: str, destination: Path):
+    with httpx.stream('GET', url, follow_redirects=True) as response, destination.open('wb') as out_file:
+        for data in response.iter_bytes():
+            out_file.write(data)
+
+
 def download(version):
     url = f'https://downloads.sourceforge.net/project/zsh/zsh-doc/{version}/zsh-{version}-doc.tar.xz'
     file = HERE / f'zsh-{version}-doc.tar.xz'
-    run(['curl', '-A', 'curl', '-Lo', file, url])
+    _download_to_file(url, file)
     run(['tar', 'xJf', file])
 
 
@@ -115,7 +121,7 @@ def generate_index():
 
 
 def add_icon():
-    run(['curl', '-o', DOCSET / 'icon.png', 'http://zsh.sourceforge.net/favicon.png'])
+    _download_to_file('https://zsh.sourceforge.net/favicon.png', DOCSET / 'icon.png')
 
 
 def tarup():
