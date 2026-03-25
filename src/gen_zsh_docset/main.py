@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import logging
 import os
 import plistlib
 import shutil
@@ -7,6 +8,7 @@ import sqlite3
 import tarfile
 from contextlib import nullcontext
 from pathlib import Path
+from typing import cast
 
 import bs4
 import httpx
@@ -21,6 +23,8 @@ INFO_PLIST = CONTENTS / 'Info.plist'
 DOCUMENTS_DIR = RESOURCES / 'Documents'
 INDEX = RESOURCES / 'docSet.dsidx'
 
+
+logger = logging.getLogger(__name__)
 
 def _download_to_file(url: str, destination: Path, show_progress=True):
     if show_progress:
@@ -69,42 +73,34 @@ def copy_documents(version):
 
 
 def generate_index():
-    entries = []
+    entries: list[tuple[str, str, str]] = []
     for file in DOCUMENTS_DIR.iterdir():
         with open(file) as fp:
-            title = bs4.BeautifulSoup(fp, 'html.parser').title.text
+            soup = bs4.BeautifulSoup(fp, 'html.parser')
+        title = soup.title.text if soup.title else file.stem
         if title.startswith('zsh: '):
             title = title[5:]
         entries.append((title, 'Guide', file.name))
 
-    # Indexes
-    for filename, index_class, type_ in [('Concept-Index.html', 'index-cp', 'Entry'),
-                                         ('Variables-Index.html', 'index-vr', 'Variable'),
-                                         ('Options-Index.html', 'index-pg', 'Option'),
-                                         ('Functions-Index.html', 'index-fn', 'Function'),
-                                         ('Editor-Functions-Index.html', 'index-tp', 'Function')]:
+    index_documents = [
+        ('Concept-Index.html', 'index-cp', 'Entry'),
+        ('Variables-Index.html', 'index-vr', 'Variable'),
+        ('Options-Index.html', 'index-pg', 'Option'),
+        ('Functions-Index.html', 'index-fn', 'Function'),
+        ('Editor-Functions-Index.html', 'index-tp', 'Function'),
+        ('Style-and-Tag-Index.html', 'index-ky', lambda name: 'Tag' if name.endswith(' tag') else 'Style')
+    ]
+    for filename, index_class, type_ in index_documents:
         with open(DOCUMENTS_DIR / filename) as fp:
             soup = bs4.BeautifulSoup(fp, 'html.parser')
-        table = soup.find('table', class_=index_class)
+        if (table := soup.find('table', class_=index_class)) is None:
+            logger.warning("table.%s not found in %s", index_class, filename)
+            continue
         for tr in table.find_all('tr'):
-            try:
-                name = tr.a.text
-                path = tr.a['href']
-                entries.append((name, type_, path))
-            except Exception:
-                pass
-
-    # Style and tag index
-    with open(DOCUMENTS_DIR / 'Style-and-Tag-Index.html') as fp:
-        soup = bs4.BeautifulSoup(fp, 'html.parser')
-    table = soup.find('table', class_='index-ky')
-    for tr in table.find_all('tr'):
-        try:
-            name = tr.a.text
-            path = tr.a['href']
-            entries.append((name, ('Tag' if name.endswith(' tag') else 'Style'), path))
-        except Exception:
-            pass
+            # Each row is a mapping from term to section. The term is the first link.
+            if link := tr.select_one('td a[href]'):
+                row_type = type_ if isinstance(type_, str) else type_(link.text)
+                entries.append((link.text, row_type, cast(str, link['href'])))
 
     conn = sqlite3.connect(os.fspath(INDEX))
     cur = conn.cursor()
@@ -137,6 +133,7 @@ def tarup():
 
 
 def main():
+    # logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument('zsh_version')
     parser.add_argument(
