@@ -1,3 +1,4 @@
 *.docset
-zsh-5.8-doc.tar.xz
-zsh-5.8
+/zsh-*/
+*.tar.xz
+*.tgz

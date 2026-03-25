@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-
-# Requires Python 3.6+.
-
 import argparse
 import os
 import plistlib
-import shlex
 import shutil
 import sqlite3
-import subprocess
-import sys
+import tarfile
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -45,7 +40,9 @@ def download(version):
     url = f'https://downloads.sourceforge.net/project/zsh/zsh-doc/{version}/zsh-{version}-doc.tar.xz'
     file = HERE / f'zsh-{version}-doc.tar.xz'
     _download_to_file(url, file)
-    run(['tar', 'xJf', file])
+    archive: tarfile.TarFile
+    with tarfile.open(file) as archive:
+        archive.extractall()
 
 
 INFO_PLIST_DATA = dict(
@@ -129,8 +126,14 @@ def add_icon():
     _download_to_file('https://zsh.sourceforge.net/favicon.png', DOCSET / 'icon.png')
 
 
+def exclude_name(name: str):
+    return lambda tarinfo: None if (Path(tarinfo.name).name != name) else tarinfo
+
+
 def tarup():
-    run(['tar', '--exclude=.DS_Store', '-C', DOCSET.parent, '-cvzf', DOCSET_TARBALL.name, DOCSET.name])
+    archive: tarfile.TarFile
+    with tarfile.open(DOCSET_TARBALL.name, mode='w:gz') as archive:
+        archive.add(DOCSET.name, filter=exclude_name('.DS_Store'))
 
 
 def main():
