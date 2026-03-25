@@ -26,3 +26,6 @@ dev = [
     "pyrefly>=0.57.1",
     "ruff>=0.15.7",
 ]
+
+[tool.ruff]
+line-length = 100
