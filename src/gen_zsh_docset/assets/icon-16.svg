@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="672" height="672" version="1.1" viewBox="0 0 672 672" xmlns="http://www.w3.org/2000/svg" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <sodipodi:namedview pagecolor="#ffffff" showgrid="true">
+  <inkscape:grid color="#0099e5" opacity=".15" empcolor="#0099e5" empopacity="0.3" empspacing="4" enabled="true" spacingx="42" spacingy="42" units="px" visible="true"/>
+ </sodipodi:namedview>
+ <g fill="none" stroke="#f15a24" stroke-linecap="round" stroke-linejoin="round">
+  <g fill="none">
+   <path d="m462 42-434 518" stroke-width="55"/>
+   <circle id="a" cx="126" cy="168" r="84" fill="none" stroke-width="84"/>
+   <path d="m651 609h-170" stroke-width="42"/>
+  </g>
+  <use transform="translate(210,294)" xlink:href="#a"/>
+ </g>
+ <metadata>
+  <rdf:RDF>
+   <cc:Work rdf:about="">
+    <cc:license rdf:resource="http://creativecommons.org/licenses/by-sa/4.0/"/>
+    <dc:source>https://github.com/Zsh-art/logo</dc:source>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+</svg>

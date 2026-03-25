@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import importlib.resources
 import logging
 import os
 import plistlib
@@ -36,7 +37,7 @@ def _download_to_file(url: str, destination: Path, show_progress=True):
             progress.reset(int(content_length))
         for data in response.iter_bytes():
             out_file.write(data)
-            if progress:
+            if progress is not None:
                 progress.update(response.num_bytes_downloaded)
 
 
@@ -122,11 +123,24 @@ def write_dsidx(entries: list[tuple[str, str, str]]):
         conn.commit()
 
 
-def add_icon():
-    _download_to_file('https://zsh.sourceforge.net/favicon.png', DOCSET / 'icon.png')
+ZSH_ART_URL = "https://github.com/Zsh-art/logo/raw/refs/heads/main/"
+
+def add_icon(*, no_download=False):
+    zsh_art_assets = [
+        (DOCSET / 'icon.svg', ZSH_ART_URL + 'favicon/favicon.svg'),
+        (DOCSET / 'icon@2x.png', ZSH_ART_URL + 'app-icons/zsh-icon-32x32.png')
+    ]
+    for asset_path, url in zsh_art_assets:
+        if not asset_path.exists() or not no_download:
+            _download_to_file(url, asset_path)
+
+    # keturn decided the SVG is illegible when rendered at 16px, and took liberties.
+    png_data = importlib.resources.read_binary('gen_zsh_docset.assets', 'icon-16px.png')
+    (DOCSET / 'icon.png').write_bytes(png_data)
 
 
 def exclude_name(name: str):
+    """Return an exclusion filter for files with the given name."""
     return lambda tarinfo: None if (Path(tarinfo.name).name != name) else tarinfo
 
 
@@ -153,7 +167,7 @@ def main():
     generate_info_plist()
     copy_documents(version)
     generate_index()
-    add_icon()
+    add_icon(no_download=args.no_download)
     tarup()
 
 
