@@ -73,6 +73,11 @@ def copy_documents(version):
 
 
 def generate_index():
+    entries = parse_index_entries()
+    write_dsidx(entries)
+
+
+def parse_index_entries():
     entries: list[tuple[str, str, str]] = []
     for file in DOCUMENTS_DIR.iterdir():
         with open(file) as fp:
@@ -102,20 +107,19 @@ def generate_index():
                 row_type = type_ if isinstance(type_, str) else type_(link.text)
                 entries.append((link.text, row_type, cast(str, link['href'])))
 
-    conn = sqlite3.connect(os.fspath(INDEX))
-    cur = conn.cursor()
+    return entries
 
-    try:
-        cur.execute('DROP TABLE searchIndex;')
-    except Exception:
-        pass
-    cur.execute('CREATE TABLE searchIndex(id INTEGER PRIMARY KEY, name TEXT, type TEXT, path TEXT);')
-    cur.execute('CREATE UNIQUE INDEX anchor ON searchIndex (name, type, path);')
-    for name, type_, path in entries:
-        print(f'|{name}|{type_}|{path}')
-        cur.execute('INSERT OR IGNORE INTO searchIndex(name, type, path) VALUES (?,?,?)', (name, type_, path))
-    conn.commit()
-    conn.close()
+
+def write_dsidx(entries: list[tuple[str, str, str]]):
+    with sqlite3.connect(INDEX, autocommit=False) as conn:
+        cur = conn.cursor()
+        cur.executescript('''\
+          DROP TABLE IF EXISTS searchIndex;
+          CREATE TABLE searchIndex(id INTEGER PRIMARY KEY, name TEXT, type TEXT, path TEXT);
+          CREATE UNIQUE INDEX anchor ON searchIndex (name, type, path);
+        ''')
+        cur.executemany('INSERT OR IGNORE INTO searchIndex(name, type, path) VALUES (?,?,?);', entries)
+        conn.commit()
 
 
 def add_icon():
