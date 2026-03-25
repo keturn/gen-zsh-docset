@@ -10,10 +10,12 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 import bs4
 import httpx
+import tqdm
 
 HERE = Path().cwd()
 DOCSET = HERE / 'Zsh.docset'
@@ -25,15 +27,18 @@ DOCUMENTS_DIR = RESOURCES / 'Documents'
 INDEX = RESOURCES / 'docSet.dsidx'
 
 
-def run(cmd):
-    print('> ' + ' '.join(shlex.quote(str(arg)) for arg in cmd), file=sys.stderr)
-    subprocess.check_call(cmd)
-
-
-def _download_to_file(url: str, destination: Path):
-    with httpx.stream('GET', url, follow_redirects=True) as response, destination.open('wb') as out_file:
+def _download_to_file(url: str, destination: Path, show_progress=True):
+    if show_progress:
+        progress_indicator = tqdm.tqdm(desc=destination.name, unit='B', unit_scale=2)
+    else:
+        progress_indicator = nullcontext()
+    with httpx.stream('GET', url, follow_redirects=True) as response, destination.open('wb') as out_file, progress_indicator as progress:
+        if progress is not None and (content_length := response.headers.get("Content-Length")):
+            progress.reset(int(content_length))
         for data in response.iter_bytes():
             out_file.write(data)
+            if progress:
+                progress.update(response.num_bytes_downloaded)
 
 
 def download(version):
