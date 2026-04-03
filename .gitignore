@@ -2,3 +2,6 @@
 /zsh-*/
 *.tar.xz
 *.tgz
+
+__pycache__
+.pnpm-store

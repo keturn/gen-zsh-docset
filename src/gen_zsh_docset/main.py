@@ -56,6 +56,15 @@ def download(version):
         archive.extractall()
 
 
+def download_sources(version):
+    source_url = f"https://downloads.sourceforge.net/project/zsh/zsh/{version}/zsh-{version}.tar.xz"
+    file = HERE / f"zsh-{version}.tar.xz"
+    _download_to_file(source_url, file)
+    archive: tarfile.TarFile
+    with tarfile.open(file) as archive:
+        archive.extractall()
+
+
 INFO_PLIST_DATA = dict(
     CFBundleIdentifier="zsh",
     CFBundleName="Zsh",
@@ -86,6 +95,15 @@ def generate_index():
 
 
 def parse_index_entries():
+    with open(DOCUMENTS_DIR / "index.html") as fp:
+        soup = bs4.BeautifulSoup(fp, "html.parser")
+    if generator := soup.select_one('meta[name="Generator"]'):
+        if "texi2any" in generator["content"]:
+            return parse_index_entries_texi2any()
+    return parse_index_entries_texi2html()
+
+
+def entry_for_each_page():
     entries: list[tuple[str, str, str]] = []
     for file in DOCUMENTS_DIR.iterdir():
         with open(file) as fp:
@@ -94,7 +112,48 @@ def parse_index_entries():
         if title.startswith("zsh: "):
             title = title[5:]
         entries.append((title, "Guide", file.name))
+    return entries
 
+
+def parse_index_entries_texi2any():
+    entries: list[tuple[str, str, str]] = []
+    entries.extend(entry_for_each_page())
+
+    index_documents = [
+        ("Concept-Index.html", "cp-entries-printindex", "Entry"),
+        ("Variables-Index.html", "vr-entries-printindex", "Variable"),
+        ("Options-Index.html", "pg-entries-printindex", "Option"),
+        ("Functions-Index.html", "fn-entries-printindex", "Function"),
+        ("Editor-Functions-Index.html", "tp-entries-printindex", "Function"),
+        (
+            "Style-and-Tag-Index.html",
+            "ky-entries-printindex",
+            lambda name: "Tag" if name.endswith(" tag") else "Style",
+        ),
+    ]
+    for filename, index_class, type_ in index_documents:
+        with open(DOCUMENTS_DIR / filename) as fp:
+            soup = bs4.BeautifulSoup(fp, "html.parser")
+        if (table := soup.find("table", class_=index_class)) is None:
+            logger.warning("table.%s not found in %s", index_class, filename)
+            continue
+        # texi2any kindly distinctly labels the entry and section links
+        for link in table.select(".printindex-index-entry a[href]"):
+            row_type = type_ if isinstance(type_, str) else type_(link.text)
+            entries.append((link.text, row_type, cast(str, link["href"])))
+
+    return entries
+
+
+def parse_index_entries_texi2html():
+    entries: list[tuple[str, str, str]] = []
+    entries.extend(entry_for_each_page())
+
+    # Beware: Some versions of texi2html will split a large index over multiple HTML pages.
+    # This is the case with the upstream zsh-5.9-doc.tar.xz, which was built with texi2html 5.0.
+    # We could fix this to crawl multi-page indicies, but rebuilding the docs with a current
+    # version of texi2any makes that problem go away… and hopefully future releases won't continue
+    # to use old texi2html.
     index_documents = [
         ("Concept-Index.html", "index-cp", "Entry"),
         ("Variables-Index.html", "index-vr", "Variable"),
@@ -157,7 +216,7 @@ def add_icon(*, no_download=False):
 
 def exclude_name(name: str):
     """Return an exclusion filter for files with the given name."""
-    return lambda tarinfo: None if (Path(tarinfo.name).name != name) else tarinfo
+    return lambda tarinfo: None if (Path(tarinfo.name).name == name) else tarinfo
 
 
 def tarup():
