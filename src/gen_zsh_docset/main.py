@@ -12,7 +12,7 @@ import tarfile
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast
 from urllib.parse import urlsplit
 
 import bs4
@@ -295,15 +295,23 @@ def add_icon(*, no_download=False):
     (DOCSET / "icon.png").write_bytes(png_data)
 
 
-def exclude_name(name: str):
+def exclude_name(name: str) -> Callable[[tarfile.TarInfo], tarfile.TarInfo | None]:
     """Return an exclusion filter for files with the given name."""
     return lambda tarinfo: None if (Path(tarinfo.name).name == name) else tarinfo
+
+
+def as_user_zero(tarinfo: tarfile.TarInfo | None) -> tarfile.TarInfo | None:
+    if tarinfo:
+        tarinfo.uid = tarinfo.gid = 0
+        tarinfo.uname = tarinfo.gname = "zsh"
+    return tarinfo
 
 
 def tarup():
     archive: tarfile.TarFile
     with tarfile.open(DOCSET_TARBALL.name, mode="w:gz") as archive:
-        archive.add(DOCSET.name, filter=exclude_name(".DS_Store"))
+        no_ds_store = exclude_name(".DS_Store")
+        archive.add(DOCSET, DOCSET.name, filter=lambda tarinfo: as_user_zero(no_ds_store(tarinfo)))
 
 
 def main():
