@@ -1,3 +1,4 @@
 [submodule "vendor/zsh"]
 	path = vendor/zsh
-	url = https://github.com/zsh-users/zsh
+	url = git@github.com:keturn/zsh.git
+	branch = 5.9-docs
