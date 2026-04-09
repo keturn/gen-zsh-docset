@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 import argparse
+import fnmatch
 import importlib.resources
 import logging
 import os
 import plistlib
+import re
 import shutil
 import sqlite3
 import tarfile
 from contextlib import nullcontext
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
+from urllib.parse import urlsplit
 
 import bs4
 import httpx
@@ -22,6 +26,7 @@ CONTENTS = DOCSET / "Contents"
 RESOURCES = CONTENTS / "Resources"
 INFO_PLIST = CONTENTS / "Info.plist"
 DOCUMENTS_DIR = RESOURCES / "Documents"
+FAQ_DIR = DOCUMENTS_DIR / "FAQ"
 INDEX = RESOURCES / "docSet.dsidx"
 
 logger = logging.getLogger(__name__)
@@ -43,6 +48,16 @@ def _download_to_file(url: str, destination: Path, show_progress=True):
             out_file.write(data)
             if progress is not None:
                 progress.update(response.num_bytes_downloaded)
+    if when_str := response.headers.get("last-modified"):
+        try:
+            when = datetime.strptime(when_str, "%a, %d %b %Y %H:%M:%S GMT").replace(
+                tzinfo=timezone.utc
+            )
+        except ValueError as e:
+            logger.debug("Failed to parse last-modified date", exc_info=e)
+        else:
+            stat = os.stat(destination)
+            os.utime(destination, (stat.st_atime, when.timestamp()))
 
 
 def download(version):
@@ -82,15 +97,26 @@ def generate_info_plist():
         plistlib.dump(INFO_PLIST_DATA, plist_file, sort_keys=False)
 
 
+def _non_html(_directory, names):
+    return set(names).difference(
+        fnmatch.filter(names, "*.html"),
+        fnmatch.filter(names, "*.css"),
+        fnmatch.filter(names, "*.svg"),
+        fnmatch.filter(names, "*.png"),
+    )
+
+
 def copy_documents(version):
-    DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
     source_dir = HERE / f"zsh-{version}" / "Doc"
-    for file in source_dir.glob("*.html"):
-        shutil.copy(file, DOCUMENTS_DIR)
+    shutil.copytree(source_dir, DOCUMENTS_DIR, ignore=_non_html, symlinks=True, dirs_exist_ok=True)
+
+    source_faq_dir = HERE / f"zsh-{version}" / "Etc"
+    shutil.copytree(source_faq_dir, FAQ_DIR, ignore=_non_html, symlinks=True, dirs_exist_ok=True)
 
 
 def generate_index():
     entries = parse_index_entries()
+    entries.extend(faq_entries())
     write_dsidx(entries)
 
 
@@ -103,16 +129,66 @@ def parse_index_entries():
     return parse_index_entries_texi2html()
 
 
+def is_relative_url(s):
+    url = urlsplit(s)
+    return not (url.scheme or url.netloc or url.path.startswith("/"))
+
+
+refresh_re = re.compile(r"-?\d+\s*;\s*url=(?P<url>.*)", re.IGNORECASE)
+
+module_title_re = re.compile("The .* Module", re.IGNORECASE)
+
+
 def entry_for_each_page():
     entries: list[tuple[str, str, str]] = []
-    for file in DOCUMENTS_DIR.iterdir():
+    for file in DOCUMENTS_DIR.glob("*.html"):
         with open(file) as fp:
             soup = bs4.BeautifulSoup(fp, "html.parser")
         title = soup.title.text if soup.title else file.stem
+        target = file.name
+        type_ = "Guide"
+        if refresh := soup.select_one('meta[http-equiv="Refresh" i]'):
+            if url_match := refresh_re.fullmatch(cast(str, refresh.get("content"))):
+                target = url_match.group("url")
+                if not is_relative_url(target):
+                    continue
+                type_ = "Entry"
+
         if title.startswith("zsh: "):
             title = title[5:]
-        entries.append((title, "Guide", file.name))
+
+        if module_title_re.search(title):
+            type_ = "Module"
+
+        entries.append((title, type_, target))
     return entries
+
+
+def faq_entries():
+    entries: list[tuple[str, str, str]] = [("FAQ", "Guide", "FAQ/FAQ.html")]
+    with open(FAQ_DIR / "FAQ.html") as fp:
+        soup = bs4.BeautifulSoup(fp, "html.parser")
+    for link in soup.select("dl a[href]"):
+        url = cast(str, link["href"])
+        if not is_relative_url(url):
+            continue
+        try:
+            section, title = link.text.split(":", 1)
+        except ValueError as e:
+            # there are a couple random links hanging out in the footer
+            logger.debug("Disregarding FAQ link %s", e, exc_info=e)
+            continue
+        is_guide = any({"h1", "h2"}.intersection([e.name for e in link.parents]))
+        entries.append((title.strip(), "Guide" if is_guide else "Entry", "FAQ/" + url))
+    return entries
+
+
+def function_category(name: str, page: str):
+    if "Commands" in page:
+        return "Command"
+    if "Grammar" in page:
+        return "Keyword"
+    return "Function"
 
 
 def parse_index_entries_texi2any():
@@ -123,12 +199,16 @@ def parse_index_entries_texi2any():
         ("Concept-Index.html", "cp-entries-printindex", "Entry"),
         ("Variables-Index.html", "vr-entries-printindex", "Variable"),
         ("Options-Index.html", "pg-entries-printindex", "Option"),
-        ("Functions-Index.html", "fn-entries-printindex", "Function"),
+        (
+            "Functions-Index.html",
+            "fn-entries-printindex",
+            function_category,
+        ),
         ("Editor-Functions-Index.html", "tp-entries-printindex", "Function"),
         (
             "Style-and-Tag-Index.html",
             "ky-entries-printindex",
-            lambda name: "Tag" if name.endswith(" tag") else "Style",
+            lambda name, page: "Tag" if name.endswith(" tag") else "Style",
         ),
     ]
     for filename, index_class, type_ in index_documents:
@@ -139,8 +219,9 @@ def parse_index_entries_texi2any():
             continue
         # texi2any kindly distinctly labels the entry and section links
         for link in table.select(".printindex-index-entry a[href]"):
-            row_type = type_ if isinstance(type_, str) else type_(link.text)
-            entries.append((link.text, row_type, cast(str, link["href"])))
+            target = cast(str, link["href"])
+            row_type = type_ if isinstance(type_, str) else type_(link.text, target)
+            entries.append((link.text, row_type, target))
 
     return entries
 
@@ -197,7 +278,7 @@ def write_dsidx(entries: list[tuple[str, str, str]]):
         conn.commit()
 
 
-ZSH_ART_URL = "https://github.com/Zsh-art/logo/raw/refs/heads/main/"
+ZSH_ART_URL = "https://raw.githubusercontent.com/Zsh-art/logo/refs/heads/main/"
 
 
 def add_icon(*, no_download=False):
