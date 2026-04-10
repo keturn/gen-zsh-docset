@@ -1,7 +1,9 @@
 Generate a [Zsh docset](https://github.com/Kapeli/Dash-User-Contributions/tree/master/docsets/Zsh)
 for [Dash](https://kapeli.com/dash) and [Zeal](https://zealdocs.org/).
 
-Currently built for use with Zsh 5.9, this will download the zsh-docs distribution from the official release but I found better results by re-building the docs from source with a current version of texinfo.
+Currently made for use with Zsh 5.9, this will download the zsh-docs distribution from the official release but I found
+better results by re-building the docs from source with a current version of texinfo.
+Configuration and stylesheets for that build are at https://github.com/keturn/zsh/tree/5.9-docs
 
 ---
 
